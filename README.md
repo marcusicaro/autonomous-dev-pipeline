@@ -6,15 +6,22 @@ Works with any Jira project and any GitHub repository. Configure via environment
 
 ## What it does
 
-```
-Jira sprint backlog
-    ↓ fetch "To Do" tasks
-    ↓ analyze complexity (heuristic or Anthropic haiku)
-    ↓ skip COMPLEX tasks (need a human)
-    ↓ create GitHub Issue with copilot-task label
-    ↓ call Anthropic sonnet to generate implementation spec
-    ↓ append spec to issue body + add spec-ready label
-    ↓ assign @copilot to the issue
+```mermaid
+flowchart TD
+    A([Jira Sprint Backlog]) --> B[Fetch 'To Do' Tasks]
+    B --> C[Analyze Complexity\nHeuristic · Claude Haiku]
+    C --> D{Too Complex?}
+    D -- Yes --> E([Skip — Needs Human])
+    D -- No --> F[Create GitHub Issue\nwith copilot-task label]
+    F --> G[Generate Implementation Spec\nClaude Sonnet]
+    G --> H[Append Spec to Issue\nadd spec-ready label]
+    H --> I[Assign @copilot to Issue]
+    I --> J[Copilot Implements &\nOpens Pull Request]
+    J --> K([CI Pipeline · Tests · Merge])
+
+    style A fill:#0052CC,color:#fff
+    style E fill:#6B7280,color:#fff
+    style K fill:#16A34A,color:#fff
 ```
 
 Copilot then implements the task and opens a PR. Your CI pipeline in the target repo handles the rest.
