@@ -1,0 +1,63 @@
+# TEMPLATE — copy this file to your target repo's .github/workflows/
+#
+# Event-driven alternative to the poll-mode enricher.
+# Fires immediately when a "copilot-task" label is added to an issue.
+#
+# Required secrets in the TARGET repo:
+#   COPILOT_DISPATCH_TOKEN  — PAT with repo access to this automation repo
+#   ANTHROPIC_API_KEY
+#   JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
+#
+# Required variables in the TARGET repo:
+#   COPILOT_DISPATCH_REPO   — "owner/copilot-dispatch" (this automation repo)
+#   TECH_STACK              — short description for the enricher prompt
+#   ARCH_NOTES              — (optional) project-specific conventions
+
+name: Enrich Copilot Issue
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  enrich:
+    if: github.event.label.name == 'copilot-task'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout automation tool
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.COPILOT_DISPATCH_REPO }}
+          token: ${{ secrets.COPILOT_DISPATCH_TOKEN }}
+          path: .copilot-dispatch
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: .copilot-dispatch/package-lock.json
+
+      - name: Install automation dependencies
+        run: npm ci
+        working-directory: .copilot-dispatch
+
+      - name: Enrich issue with spec
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+          TECH_STACK: ${{ vars.TECH_STACK || 'TypeScript web application' }}
+          ARCH_NOTES: ${{ vars.ARCH_NOTES || '' }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: npx tsx src/cli.ts enrich --issue $ISSUE_NUMBER
+        working-directory: .copilot-dispatch

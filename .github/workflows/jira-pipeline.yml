@@ -1,0 +1,89 @@
+# Jira → Copilot Pipeline
+#
+# Runs on a schedule: fetches the active Jira sprint, analyzes task complexity,
+# creates GitHub Issues in the target repo, and assigns Copilot to each.
+#
+# Required GitHub secrets (Settings → Secrets → Actions):
+#   JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
+#   GITHUB_TOKEN (built-in — needs issues:write on the TARGET repo via PAT if cross-repo)
+#   ANTHROPIC_API_KEY
+#
+# Required GitHub variables (Settings → Variables → Actions):
+#   GITHUB_REPO        — target repo in "owner/repo" format
+#   TECH_STACK         — short description for the enricher prompt
+#   ARCH_NOTES         — (optional) project-specific conventions
+
+name: Jira → Copilot Pipeline
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'   # Mon–Fri 09:00 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        required: true
+        default: 'full'
+        type: choice
+        options: [full, dry-run, analyze-only]
+      use_llm:
+        description: 'Use Anthropic haiku for complexity analysis (slower, more accurate)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout automation repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run pipeline
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+          JIRA_SPRINT_PREFIX: ${{ vars.JIRA_SPRINT_PREFIX || 'Sprint' }}
+          JIRA_PICK_STATUSES: ${{ vars.JIRA_PICK_STATUSES || 'To Do' }}
+          JIRA_ASSIGNEE_FILTER: ${{ vars.JIRA_ASSIGNEE_FILTER || '' }}
+          JIRA_TRANSITION_TO: ${{ vars.JIRA_TRANSITION_TO || 'In Progress' }}
+          GITHUB_TOKEN: ${{ secrets.COPILOT_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ vars.GITHUB_REPO || github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MAX_AUTO_TASKS: ${{ vars.MAX_AUTO_TASKS || '3' }}
+          CONFIDENCE_THRESHOLD: ${{ vars.CONFIDENCE_THRESHOLD || '75' }}
+          TECH_STACK: ${{ vars.TECH_STACK || 'TypeScript web application' }}
+          ARCH_NOTES: ${{ vars.ARCH_NOTES || '' }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+          LLM="${{ github.event.inputs.use_llm || 'false' }}"
+          ARGS=""
+          [ "$MODE" = "dry-run" ] && ARGS="$ARGS --dry-run"
+          [ "$MODE" = "analyze-only" ] && ARGS="$ARGS --analyze-only"
+          [ "$LLM" = "true" ] && ARGS="$ARGS --llm"
+          npx tsx src/cli.ts pipeline $ARGS
+
+      - name: Upload processed-issues tracker
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-issues
+          path: .processed-issues.json
+          if-no-files-found: ignore
+          retention-days: 90

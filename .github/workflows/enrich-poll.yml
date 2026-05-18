@@ -1,0 +1,52 @@
+# Copilot Issue Enricher — Poll Mode
+#
+# Polls the target repo every 15 minutes for issues that have the
+# "copilot-task" label but NOT "spec-ready". For each match it:
+#   1. Calls claude-sonnet to generate an implementation spec
+#   2. Appends the spec to the issue body
+#   3. Adds the "spec-ready" label
+#   4. Assigns @copilot
+#
+# This runs in THIS automation repo — no code needed in the target repo.
+# The COPILOT_DISPATCH_TOKEN secret must have issues:write on the target repo.
+
+name: Enrich Pending Issues
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # every 15 minutes
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout automation repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Poll and enrich
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_DISPATCH_TOKEN }}
+          GITHUB_REPO: ${{ vars.GITHUB_REPO }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TECH_STACK: ${{ vars.TECH_STACK || 'TypeScript web application' }}
+          ARCH_NOTES: ${{ vars.ARCH_NOTES || '' }}
+          # Jira vars not needed for enrichment-only runs — but required by config.ts
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+        run: npx tsx src/cli.ts poll-enrich

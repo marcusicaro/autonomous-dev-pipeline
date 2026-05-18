@@ -1,0 +1,19 @@
+{
+  "name": "copilot-dispatch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pipeline": "tsx src/cli.ts pipeline",
+    "dry": "tsx src/cli.ts pipeline --dry-run",
+    "analyze": "tsx src/cli.ts pipeline --analyze-only",
+    "enrich": "tsx src/cli.ts enrich",
+    "poll-enrich": "tsx src/cli.ts poll-enrich"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.4.7",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
