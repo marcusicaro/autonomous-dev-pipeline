@@ -10,9 +10,7 @@ Works with any Jira project and any GitHub repository. Configure via environment
 flowchart TD
     A([Jira Sprint Backlog]) --> B[Fetch 'To Do' Tasks]
     B --> C[Analyze Complexity\nHeuristic · Claude Haiku]
-    C --> D{Too Complex?}
-    D -- Yes --> E([Skip — Needs Human])
-    D -- No --> F[Create GitHub Issue\nwith copilot-task label]
+    C --> F[Create GitHub Issue\nwith copilot-task label]
     F --> G[Generate Implementation Spec\nClaude Sonnet]
     G --> H[Append Spec to Issue\nadd spec-ready label]
     H --> I[Assign @copilot to Issue]
@@ -20,7 +18,6 @@ flowchart TD
     J --> K([CI Pipeline · Tests · Merge])
 
     style A fill:#0052CC,color:#fff
-    style E fill:#6B7280,color:#fff
     style K fill:#16A34A,color:#fff
 ```
 
