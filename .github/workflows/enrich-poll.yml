@@ -14,7 +14,7 @@ name: Enrich Pending Issues
 
 on:
   schedule:
-    - cron: '* * * * *'   # every minute (GitHub Actions enforces ~5min minimum)
+    - cron: '*/5 * * * *'   # every 5 minutes
   workflow_dispatch: {}
 
 permissions:
