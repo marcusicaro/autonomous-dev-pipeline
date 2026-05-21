@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ANTHROPIC_API_KEY, TECH_STACK } from './config.js';
+import { getAnthropicApiKey, TECH_STACK } from './config.js';
 import type { JiraIssue } from './jira.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ function parseAnalysis(raw: string): AnalysisResult {
 }
 
 async function analyzeLlm(issue: JiraIssue): Promise<AnalysisResult> {
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: getAnthropicApiKey() });
   const response = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1024,

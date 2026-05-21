@@ -1,8 +1,8 @@
 import {
-  JIRA_BASE_URL,
-  JIRA_EMAIL,
-  JIRA_API_TOKEN,
-  JIRA_PROJECT_KEY,
+  getJiraBaseUrl,
+  getJiraEmail,
+  getJiraApiToken,
+  getJiraProjectKey,
   JIRA_SPRINT_PREFIX,
   JIRA_PICK_STATUSES,
   JIRA_ASSIGNEE_FILTER,
@@ -20,6 +20,16 @@ export interface JiraSprint {
   startDate?: string;
   endDate?: string;
   goal?: string;
+}
+
+/**
+ * Scope of issues to pull. Sprint-based for Scrum boards; project-level for Kanban boards.
+ * Kanban boards have no sprints — we just filter by status.
+ */
+export interface JiraScope {
+  kind: 'sprint' | 'kanban';
+  sprintId: number | null;
+  name: string;
 }
 
 export interface JiraIssue {
@@ -43,14 +53,16 @@ export interface JiraIssue {
 // HTTP helper
 // ─────────────────────────────────────────────────────────────────────────────
 
-const AUTH_HEADER = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
+function authHeader(): string {
+  return 'Basic ' + Buffer.from(`${getJiraEmail()}:${getJiraApiToken()}`).toString('base64');
+}
 
 async function jiraFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const url = path.startsWith('http') ? path : `${JIRA_BASE_URL}${path}`;
+  const url = path.startsWith('http') ? path : `${getJiraBaseUrl()}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {
-      Authorization: AUTH_HEADER,
+      Authorization: authHeader(),
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...((options.headers as Record<string, string>) ?? {}),
@@ -76,13 +88,13 @@ interface BoardsResponse { values: JiraBoard[]; isLast: boolean; startAt: number
 
 async function findBoard(): Promise<JiraBoard> {
   const scrum = await jiraFetch<BoardsResponse>(
-    `/rest/agile/1.0/board?projectKeyOrId=${JIRA_PROJECT_KEY}&type=scrum`,
+    `/rest/agile/1.0/board?projectKeyOrId=${getJiraProjectKey()}&type=scrum`,
   );
   if (scrum.values.length > 0) return scrum.values[0]!;
 
-  const any = await jiraFetch<BoardsResponse>(`/rest/agile/1.0/board?projectKeyOrId=${JIRA_PROJECT_KEY}`);
+  const any = await jiraFetch<BoardsResponse>(`/rest/agile/1.0/board?projectKeyOrId=${getJiraProjectKey()}`);
   if (any.values.length === 0) {
-    throw new Error(`No Jira board found for project "${JIRA_PROJECT_KEY}".`);
+    throw new Error(`No Jira board found for project "${getJiraProjectKey()}".`);
   }
   return any.values[0]!;
 }
@@ -93,24 +105,31 @@ async function findBoard(): Promise<JiraBoard> {
 
 interface SprintResponse { values: JiraSprint[]; isLast: boolean }
 
-export async function findActiveSprint(): Promise<JiraSprint> {
+export async function findActiveScope(): Promise<JiraScope> {
   const board = await findBoard();
+
+  // Kanban boards have no sprints — scope is the whole project, status-filtered.
+  if (board.type !== 'scrum') {
+    return { kind: 'kanban', sprintId: null, name: board.name };
+  }
+
   const active = await jiraFetch<SprintResponse>(
     `/rest/agile/1.0/board/${board.id}/sprint?state=active`,
   );
 
   if (active.values.length > 0) {
-    return active.values.find(s => s.name.startsWith(JIRA_SPRINT_PREFIX)) ?? active.values[0]!;
+    const pick = active.values.find(s => s.name.startsWith(JIRA_SPRINT_PREFIX)) ?? active.values[0]!;
+    return { kind: 'sprint', sprintId: pick.id, name: pick.name };
   }
 
-  // Fall back to next future sprint
   const future = await jiraFetch<SprintResponse>(
     `/rest/agile/1.0/board/${board.id}/sprint?state=future`,
   );
   if (future.values.length === 0) {
     throw new Error('No active or future sprint found.');
   }
-  return future.values.find(s => s.name.startsWith(JIRA_SPRINT_PREFIX)) ?? future.values[0]!;
+  const pick = future.values.find(s => s.name.startsWith(JIRA_SPRINT_PREFIX)) ?? future.values[0]!;
+  return { kind: 'sprint', sprintId: pick.id, name: pick.name };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,7 +150,7 @@ function adfToText(node: any): string {
   return '';
 }
 
-export async function getSprintIssues(sprint: JiraSprint): Promise<JiraIssue[]> {
+export async function getScopeIssues(scope: JiraScope): Promise<JiraIssue[]> {
   interface IssueSearchResponse {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     issues: { key: string; id: string; fields: Record<string, any> }[];
@@ -140,7 +159,9 @@ export async function getSprintIssues(sprint: JiraSprint): Promise<JiraIssue[]> 
   }
 
   const statusFilter = JIRA_PICK_STATUSES.map(s => `"${s}"`).join(', ');
-  let jql = `sprint = ${sprint.id} AND status IN (${statusFilter})`;
+  let jql = scope.kind === 'sprint'
+    ? `sprint = ${scope.sprintId} AND status IN (${statusFilter})`
+    : `project = ${getJiraProjectKey()} AND status IN (${statusFilter})`;
   if (JIRA_ASSIGNEE_FILTER) jql += ` AND assignee = "${JIRA_ASSIGNEE_FILTER}"`;
   jql += ' ORDER BY priority DESC, created ASC';
 
@@ -189,8 +210,8 @@ export async function getSprintIssues(sprint: JiraSprint): Promise<JiraIssue[]> 
         storyPoints: typeof storyPoints === 'number' ? storyPoints : null,
         acceptanceCriteria: typeof acceptanceCriteria === 'string' ? acceptanceCriteria : adfToText(acceptanceCriteria),
         subtasks,
-        sprintName: sprint.name,
-        url: `${JIRA_BASE_URL}/browse/${issue.key}`,
+        sprintName: scope.name,
+        url: `${getJiraBaseUrl()}/browse/${issue.key}`,
       });
     }
 

@@ -1,10 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ANTHROPIC_API_KEY, TECH_STACK, ARCH_NOTES } from './config.js';
+import { getAnthropicApiKey, TECH_STACK, ARCH_NOTES } from './config.js';
 import {
   getIssue,
   updateIssueBody,
   addIssueLabel,
-  addAssignee,
+  assignCopilot,
   createIssueComment,
   ensureLabel,
   getIssueLabels,
@@ -79,7 +79,7 @@ export async function enrichIssue(issueNumber: number): Promise<void> {
   }
 
   const issue = await getIssue(issueNumber);
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey: getAnthropicApiKey() });
 
   let specText: string;
   try {
@@ -115,7 +115,7 @@ export async function enrichIssue(issueNumber: number): Promise<void> {
   await addIssueLabel(issueNumber, 'spec-ready');
 
   try {
-    await addAssignee(issueNumber, 'copilot');
+    await assignCopilot(issueNumber);
     console.log(`  ✅ Issue #${issueNumber} enriched, spec-ready label added, Copilot assigned`);
   } catch (err) {
     console.warn(`  ⚠️  Copilot assignment failed: ${(err as Error).message}`);

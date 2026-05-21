@@ -1,4 +1,4 @@
-import { GITHUB_TOKEN, GITHUB_REPO } from './config.js';
+import { getGithubToken, getGithubRepo } from './config.js';
 import type { JiraIssue } from './jira.js';
 import type { AnalysisResult } from './analyzer.js';
 
@@ -21,7 +21,7 @@ export interface GitHubIssue {
 
 function headers(): Record<string, string> {
   return {
-    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Authorization: `Bearer ${getGithubToken()}`,
     Accept: 'application/vnd.github+json',
     'Content-Type': 'application/json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -29,7 +29,7 @@ function headers(): Record<string, string> {
 }
 
 function repoUrl(path: string): string {
-  return `https://api.github.com/repos/${GITHUB_REPO}${path}`;
+  return `https://api.github.com/repos/${getGithubRepo()}${path}`;
 }
 
 async function ghFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -111,7 +111,7 @@ function buildIssueBody(issue: JiraIssue, analysis: AnalysisResult): string {
 }
 
 export async function findExistingIssue(jiraKey: string): Promise<GitHubIssue | null> {
-  const q = encodeURIComponent(`repo:${GITHUB_REPO} is:issue "${jiraKey}" in:title label:copilot-task`);
+  const q = encodeURIComponent(`repo:${getGithubRepo()} is:issue "${jiraKey}" in:title label:copilot-task`);
   const data = await ghFetch<{ items: GitHubIssue[] }>(
     `https://api.github.com/search/issues?q=${q}&per_page=5`,
   );
@@ -139,6 +139,60 @@ export async function addAssignee(issueNumber: number, assignee: string): Promis
     method: 'POST',
     body: JSON.stringify({ assignees: [assignee] }),
   });
+}
+
+// GitHub Copilot's coding agent is a Bot, not a User. The REST `assignees`
+// endpoint silently ignores Bots — they must be assigned via GraphQL.
+async function graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const res = await fetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`GraphQL ${res.status}: ${await res.text()}`);
+  const json = await res.json() as { data?: T; errors?: Array<{ message: string }> };
+  if (json.errors?.length) throw new Error(`GraphQL errors: ${json.errors.map(e => e.message).join('; ')}`);
+  return json.data as T;
+}
+
+let cachedCopilotBotId: string | null = null;
+
+async function getCopilotBotId(): Promise<string> {
+  if (cachedCopilotBotId) return cachedCopilotBotId;
+  const [owner, name] = getGithubRepo().split('/');
+  const data = await graphql<{ repository: { suggestedActors: { nodes: Array<{ login: string; id: string; __typename: string }> } } }>(
+    `query($owner:String!,$name:String!){
+      repository(owner:$owner,name:$name){
+        suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:50){
+          nodes{__typename ... on Bot{id login} ... on User{id login}}
+        }
+      }
+    }`,
+    { owner, name },
+  );
+  const bot = data.repository.suggestedActors.nodes.find(
+    n => n.__typename === 'Bot' && /copilot/i.test(n.login),
+  );
+  if (!bot) {
+    throw new Error(
+      `Copilot bot is not assignable on ${getGithubRepo()}. Enable GitHub Copilot coding agent for this repo (Settings → Copilot → Coding agent) and ensure a paid Copilot subscription with coding-agent access.`,
+    );
+  }
+  cachedCopilotBotId = bot.id;
+  return bot.id;
+}
+
+export async function assignCopilot(issueNumber: number): Promise<void> {
+  const [owner, name] = getGithubRepo().split('/');
+  const { repository } = await graphql<{ repository: { issue: { id: string } } }>(
+    `query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){issue(number:$n){id}}}`,
+    { owner, name, n: issueNumber },
+  );
+  const botId = await getCopilotBotId();
+  await graphql(
+    `mutation($i:ID!,$a:[ID!]!){replaceActorsForAssignable(input:{assignableId:$i,actorIds:$a}){clientMutationId}}`,
+    { i: repository.issue.id, a: [botId] },
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +232,7 @@ export async function createIssueComment(issueNumber: number, body: string): Pro
 /** Search for open issues that have `withLabel` but not `withoutLabel`. */
 export async function searchIssuesByLabel(withLabel: string, withoutLabel: string): Promise<GitHubIssue[]> {
   const q = encodeURIComponent(
-    `repo:${GITHUB_REPO} is:issue is:open label:${withLabel} -label:${withoutLabel}`,
+    `repo:${getGithubRepo()} is:issue is:open label:${withLabel} -label:${withoutLabel}`,
   );
   const data = await ghFetch<{ items: GitHubIssue[] }>(
     `https://api.github.com/search/issues?q=${q}&per_page=20`,

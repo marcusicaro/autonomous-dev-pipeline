@@ -1,6 +1,6 @@
-import { findActiveSprint, getSprintIssues, transitionIssue, type JiraIssue } from './jira.js';
+import { findActiveScope, getScopeIssues, transitionIssue, type JiraIssue } from './jira.js';
 import { analyzeTask, type AnalysisResult } from './analyzer.js';
-import { findExistingIssue, createCopilotIssue, ensureLabel, addAssignee } from './github.js';
+import { findExistingIssue, createCopilotIssue, ensureLabel, assignCopilot } from './github.js';
 import { MAX_AUTO_TASKS, CONFIDENCE_THRESHOLD } from './config.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -80,15 +80,16 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<void> {
   const mode = dryRun ? '🏜️  DRY RUN' : analyzeOnly ? '🔍  ANALYZE ONLY' : '🚀  FULL';
   header(`Jira → Copilot Pipeline (${mode})`);
 
-  // Step 1: Sprint
-  console.log('\n  🔍 Finding active sprint…');
-  const sprint = await findActiveSprint();
-  console.log(`  ✅ Sprint: "${sprint.name}"`);
+  // Step 1: Find scope (sprint for Scrum boards, project-level for Kanban)
+  console.log('\n  🔍 Finding active scope…');
+  const scope = await findActiveScope();
+  const scopeLabel = scope.kind === 'sprint' ? `Sprint "${scope.name}"` : `Kanban "${scope.name}"`;
+  console.log(`  ✅ ${scopeLabel}`);
 
   // Step 2: Backlog
-  console.log('\n  📋 Fetching sprint backlog…');
-  const issues = await getSprintIssues(sprint);
-  if (issues.length === 0) { console.log('  🎉 Sprint backlog is clear!'); return; }
+  console.log('\n  📋 Fetching backlog…');
+  const issues = await getScopeIssues(scope);
+  if (issues.length === 0) { console.log('  🎉 Backlog is clear!'); return; }
   console.log(`  Found ${issues.length} issue(s):\n`);
   issues.forEach(logIssue);
 
@@ -173,9 +174,8 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<void> {
       created++;
       processed.push({ jiraKey: issue.key, githubIssueNumber: gh.number, githubIssueUrl: gh.html_url, processedAt: new Date().toISOString(), verdict: 'SIMPLE' });
 
-      // Assign Copilot directly (same workflow — GITHUB_TOKEN events don't re-trigger Actions)
       try {
-        await addAssignee(gh.number, 'copilot');
+        await assignCopilot(gh.number);
         console.log(`  🤖 Copilot assigned to #${gh.number}`);
       } catch (err) {
         console.warn(`  ⚠️  Could not assign Copilot: ${(err as Error).message}`);
@@ -196,7 +196,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<void> {
 
   // Summary
   header('Summary');
-  console.log(`  Sprint:           ${sprint.name}`);
+  console.log(`  Scope:            ${scopeLabel}`);
   console.log(`  Total backlog:    ${stats.total}`);
   console.log(`  ✅ Simple:        ${stats.simple}`);
   console.log(`  🔴 Complex:       ${stats.complex}`);
