@@ -64,7 +64,7 @@ jobs:
           JIRA_ASSIGNEE_FILTER: ${{ vars.JIRA_ASSIGNEE_FILTER || '' }}
           JIRA_TRANSITION_TO: ${{ vars.JIRA_TRANSITION_TO || 'In Progress' }}
           GITHUB_TOKEN: ${{ secrets.COPILOT_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_REPO: ${{ vars.GITHUB_REPO || github.repository }}
+          GITHUB_REPO: ${{ vars.TARGET_REPO || github.repository }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MAX_AUTO_TASKS: ${{ vars.MAX_AUTO_TASKS || '3' }}
           CONFIDENCE_THRESHOLD: ${{ vars.CONFIDENCE_THRESHOLD || '75' }}

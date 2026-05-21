@@ -40,7 +40,7 @@ jobs:
       - name: Poll and enrich
         env:
           GITHUB_TOKEN: ${{ secrets.COPILOT_DISPATCH_TOKEN }}
-          GITHUB_REPO: ${{ vars.GITHUB_REPO }}
+          GITHUB_REPO: ${{ vars.TARGET_REPO }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TECH_STACK: ${{ vars.TECH_STACK || 'TypeScript web application' }}
           ARCH_NOTES: ${{ vars.ARCH_NOTES || '' }}

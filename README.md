@@ -90,7 +90,7 @@ COPILOT_DISPATCH_TOKEN   ← PAT with issues:write on the TARGET repo
 **Variables required** (Settings → Variables → Actions):
 
 ```
-GITHUB_REPO    ← target repo, e.g. "your-org/your-app"
+TARGET_REPO    ← target repo, e.g. "your-org/your-app" (GitHub forbids GITHUB_ prefix)
 TECH_STACK     ← e.g. "React + Express + PostgreSQL monorepo"
 ARCH_NOTES     ← (optional) project conventions for the spec prompt
 ```
