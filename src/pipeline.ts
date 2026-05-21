@@ -127,6 +127,18 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<void> {
       break;
     }
 
+    // Skip dedup'd issues BEFORE any LLM call to avoid burning tokens
+    // on tickets that already have a GitHub issue.
+    try {
+      const existing = await findExistingIssue(issue.key);
+      if (existing) {
+        console.log(`  ⏭️  GitHub issue already exists: ${existing.html_url}`);
+        processed.push({ jiraKey: issue.key, githubIssueNumber: existing.number, githubIssueUrl: existing.html_url, processedAt: new Date().toISOString(), verdict: 'SIMPLE' });
+        stats.skipped++;
+        continue;
+      }
+    } catch { /* non-fatal */ }
+
     let analysis: AnalysisResult;
     try {
       console.log(`  🤖 Analyzing…`);
@@ -148,17 +160,6 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<void> {
       continue;
     }
     if (analyzeOnly) continue;
-
-    // Duplicate check
-    try {
-      const existing = await findExistingIssue(issue.key);
-      if (existing) {
-        console.log(`  ⏭️  GitHub issue already exists: ${existing.html_url}`);
-        processed.push({ jiraKey: issue.key, githubIssueNumber: existing.number, githubIssueUrl: existing.html_url, processedAt: new Date().toISOString(), verdict: 'SIMPLE' });
-        stats.skipped++;
-        continue;
-      }
-    } catch { /* non-fatal */ }
 
     if (dryRun) {
       console.log(`  📝 Would create: "[${issue.key}] ${issue.summary}"`);
