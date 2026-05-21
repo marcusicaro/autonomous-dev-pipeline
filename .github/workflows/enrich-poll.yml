@@ -14,7 +14,7 @@ name: Enrich Pending Issues
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
+    - cron: '*/5 * * * *'   # every 5 minutes
   workflow_dispatch: {}
 
 permissions:
